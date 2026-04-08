@@ -1,3 +1,5 @@
+### Spark优化：RDD, shuffle, 算子，序列化，广播
+
 ##### 原则一：避免创建重复的RDD
 
 - 对于同一份数据，只应该创建一个RDD，不能创建多个RDD来代表同一份数据。
@@ -138,15 +140,16 @@ val rdd3 = rdd1.map(rdd2DataBroadcast...)
 - 使用**mapPartitions**替代普通map: 一次函数调用会处理一个partition所有的数据; 使用mapPartitions会出现OOM（内存溢出）的问题, 。因为单次函数调用就要处理掉一个partition所有的数据，如果内存不够，垃圾回收时是无法回收掉太多对象的
 - 使用**foreachPartitions**替代foreach: 如果是普通的foreach算子，每次函数调用可能就会创建一个数据库连接; 如果用foreachPartitions算子一次性处理一个partition的数据，那么对于每个partition，只要创建一个数据库连接. 实践中发现，对于1万条左右的数据量写MySQL，性能可以提升**30%**以上。
 - 使用filter之后进行**coalesce**操作: 对一个RDD执行filter算子过滤掉RDD中较多数据后, 使用coalesce算子，手动减少RDD的partition数量
-- 使用repartitionAndSortWithinPartitions 替代 repartition + sort类操作, 该算子可以一边进行重分区的shuffle操作，一边进行排序。
+- 使用**repartitionAndSortWithinPartitions** 替代 repartition + sort类操作, 该算子可以一边进行重分区的shuffle操作，一边进行排序。
 
 
 
 ##### 原则七：广播大变量
 
 - 如果使用的外部变量比较大，建议使用Spark的广播功能，对该变量进行广播。
-- 广播后的变量，会保证每个Executor的内存中，只驻留一份变量副本，而Executor中的task执行时共享该Executor中的那份变量副本。
-- 减少网络传输的性能开销，并减少对Executor内存的占用开销，降低GC的频率。
+- **广播前，每个task**都会有一份变量的副本
+- 广播后，每个Executor的内存驻留一份变量副本，而Executor中的task执行时**共享**该Executor中的那份变量副本。
+- 减少**网络传输**的性能开销，并减少对**Executor内存的占用**开销，降低**GC**的频率。
 
 ```java
 // 以下代码在算子函数中，使用了外部的变量。
@@ -167,7 +170,7 @@ rdd1.map(list1Broadcast...)
 
 ##### 原则八：使用Kryo优化序列化性能
 
-- Kryo序列化机制比Java序列化机制，*性能**高10倍**左右*。
+- **Kryo序列化**机制比**Java序列化**机制，*性能**高10倍**左右*。
 - 场景： 使用可序列化的持久化策略时；  使用到外部变量时，该变量会被序列化后进行网络传输；所有自定义类型对象，都会进行序列化 
 
 ```java
